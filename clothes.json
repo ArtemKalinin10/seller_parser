@@ -1,8 +1,8 @@
-[{"name": "Джинсы True Religion", "brend": ["True Religion"], "price": 10000},
-{"name": "Худи Armani Exchange", "brend": ["Armani Exchange", "Emporio Armani", "Giorgio Armani"," Armani Jeans"], "price": 10000},
-{"name": "Худи Diesel", "brend": ["Diesel"], "price": 10000},
-{"name": "Рюкзак Diesel", "brend": ["Diesel"], "price": 20000},
-{"name": "Рюкзак Guess", "brend": ["Guess"], "price": 10000},
-{"name": "Сумка Armani Exchange", "brend": ["Armani Exchange"], "price": 10000},
-{"name": "Сумка: Diesel", "brend": ["Diesel"], "price": 12000},
-{"name": "Худи Givenchy", "brend": ["Givenchy"], "price": 20000}]
+[{"name": "Джинсы True Religion", "brend": ["True Religion"], "price": [7000, 10000], "path": "muzhskaya_odezhda/dzhinsy"},
+{"name": "Худи Armani Exchange", "brend": ["Armani Exchange", "Emporio Armani", "Giorgio Armani", "Armani Jeans"], "price": [7000, 10000], "path": "muzhskaya_odezhda/kofty_i_futbolki"},
+{"name": "Худи Diesel", "brend": ["Diesel"], "price": [7000, 12000], "path": "odezhda_obuv_aksessuary/muzhskaya_odezhda/kofty_i_futbolki"},
+{"name": "Рюкзак Diesel", "brend": ["Diesel"], "price": [10000, 20000], "path": "odezhda_obuv_aksessuary/sumki_ryukzaki_i_chemodany/ryukzaki"},
+{"name": "Рюкзак Guess", "brend": ["Guess"], "price": [5000, 10000], "path": "odezhda_obuv_aksessuary/sumki_ryukzaki_i_chemodany/ryukzaki"},
+{"name": "Сумка Armani Exchange", "brend": ["Armani Exchange"], "price": [8000, 10000], "path": "odezhda_obuv_aksessuary/sumki_ryukzaki_i_chemodany/sumki"},
+{"name": "Сумка Diesel", "brend": ["Diesel"], "price": [8000, 12000], "path": "odezhda_obuv_aksessuary/sumki_ryukzaki_i_chemodany/sumki"},
+{"name": "Худи Givenchy", "brend": ["Givenchy"], "price": [8000, 20000], "path": "muzhskaya_odezhda/kofty_i_futbolki"}]
