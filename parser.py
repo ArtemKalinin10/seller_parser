@@ -2,16 +2,15 @@ import time
 import re
 import json
 import undetected_chromedriver as uc
-
 from datetime import timedelta, datetime
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 from selenium.webdriver.common.by import By
 
+
 class Seller:
     def __init__(self):
-        
         self.MONTHS = {
             "января": 1,
             "февраля": 2,
@@ -110,46 +109,32 @@ class Seller:
         except Exception as e:
             print(f"Ошибка при конвертации даты '{date_str}': {e}")
             return now
-        
-    def _get_text(self, selector: str, timeout=2, retries=3) -> str:
-        tries = 0
-        while tries < retries:
-            try:
-                return WebDriverWait(self.driver, timeout).until(
-                    lambda d: d.find_element(By.CSS_SELECTOR, selector).text
-                )
-            except StaleElementReferenceException:
-                tries += 1
-                time.sleep(0.5)
-        raise RuntimeError(f"Не удалось получить элемент {selector} из-за StaleElementReference")
     
     def _scrap_cloth(self, link: str) -> tuple:
-        for attempt in range(3):
+        for attempt in range(5):
             try:
                 self.driver.get(link)
-                wait = WebDriverWait(self.driver, 1.5)
 
-                price_el = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '[itemprop="price"]'))
-                )
-                time_el = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '[data-marker="item-view/item-date"]'))
-                )
-                id_el = wait.until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '[data-marker="item-view/item-id"]'))
+                wait = WebDriverWait(self.driver, 4)
+
+                price = wait.until(
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[itemprop="price"]').get_attribute("content")
                 )
 
-                price = price_el.get_attribute("content")
-                time_str = time_el.text
-                cloth_id = id_el.text
+                time_str = wait.until(
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-date"]').text
+                )
+
+                cloth_id = wait.until(
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-id"]').text
+                )
+
                 return time_str, price, cloth_id
-                
-            except (TimeoutException, StaleElementReferenceException) as e:
-                print(f"Элементы не загрузились, пробуем снова ({attempt + 1}) - {type(e).__name__}")
-                time.sleep(1)
-                continue
 
-        raise RuntimeError(f"Не удалось получить данные для {link} после 3 попыток")
+            except (TimeoutException, StaleElementReferenceException):
+                print(f"Повтор ({attempt + 1}) — страница нестабильна")
+                time.sleep(1.5)
+
 
     def _scrap_links(self, id: int):
         items = self.driver.find_elements(
