@@ -36,7 +36,7 @@ class Seller:
         
         options = uc.ChromeOptions()
 
-        #options.add_argument("--headless=new")  # важно: new
+        options.add_argument("--headless=new")  # важно: new
         options.page_load_strategy = 'eager' 
         options.add_argument("--disable-blink-features=AutomationControlled")
         options.add_argument("--window-size=1920,1080")
