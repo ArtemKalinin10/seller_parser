@@ -1,16 +1,37 @@
 import time
 import re
-import json
+import sqlite3
 import undetected_chromedriver as uc
-from datetime import timedelta, datetime
+from datetime import datetime, timedelta
+from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
-from selenium.webdriver.common.by import By
+
+
+DB_PATH = "resell.db"
 
 
 class Seller:
+    """
+    A class to scrape items from Avito based on saved subscriptions in a SQLite database.
+
+    Attributes:
+        conn (sqlite3.Connection): SQLite connection object.
+        cur (sqlite3.Cursor): SQLite cursor object.
+        MONTHS (dict): Mapping of Russian month names to their numerical values.
+        driver (uc.Chrome): Undetected Chrome WebDriver instance.
+    """
+
     def __init__(self):
+        """
+        Initializes the Seller instance, sets up the database connection and WebDriver.
+        """
+        self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.cur = self.conn.cursor()
+
+        # Russian month names mapping
         self.MONTHS = {
             "января": 1,
             "февраля": 2,
@@ -25,186 +46,214 @@ class Seller:
             "ноября": 11,
             "декабря": 12
         }
-        
-        self.links = {}
-        
-        with open("clothes.json", 'r', encoding="utf-8") as file:
-            data = json.load(file)
-            res = {i: item for i, item in enumerate(data)}
-        self.res = res
-        
-        
+
+        # Setup Chrome WebDriver options
         options = uc.ChromeOptions()
-
-        options.add_argument("--headless=new")  # важно: new
-        options.page_load_strategy = 'eager' 
-        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--headless=new")
         options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")
 
-        self.driver = uc.Chrome(
-            version_main=144,
-            options=options
-        )
-    
-    def _check_for_captcha(self, wait=0) -> bool:
+        self.driver = uc.Chrome(options=options, version_main=144)
+
+    # ------------------
+
+    def correct_link(self, link: str) -> bool:
+        """
+        Checks if the provided link is valid by verifying region and sort order.
+
+        Args:
+            link (str): URL of the subscription page.
+
+        Returns:
+            bool: True if region is "all regions" and sort is "by date", False otherwise.
+        """
         try:
-            if wait:
-                WebDriverWait(self.driver, wait).until(
-                    EC.presence_of_element_located((By.CLASS_NAME, "firewall-title"))
+            self.driver.get(link)
+            wait = WebDriverWait(self.driver, 5)
+
+            region = wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, '[data-marker="search-form/change-location"]')
                 )
-            else:
-                self.driver.find_element(By.CLASS_NAME, "firewall-title")
-        except TimeoutException:
+            ).text.strip().lower()
+
+            sort_title = wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, '[data-marker="sort/title"]')
+                )
+            ).text.strip().lower()
+
+            if region == "во всех регионах" and sort_title == "по дате":
+                return True
+
             return False
-        except:
+
+        except Exception:
             return False
-        return True
 
-    
-    
-    def _scroll_to_bottom(self, pause=0.5, step=1200, max_scrolls=50):
-        last_height = self.driver.execute_script("return window.pageYOffset + window.innerHeight")
-        total_height = self.driver.execute_script("return document.body.scrollHeight")
+    # ------------------
 
-        scrolls = 0
-        while last_height < total_height and scrolls < max_scrolls:
-            self.driver.execute_script(f"window.scrollBy(0, {step});")
-            time.sleep(pause)
+    def _convert_time(self, text: str) -> datetime:
+        """
+        Converts Russian date strings from the site into a Python datetime object.
 
-            last_height = self.driver.execute_script("return window.pageYOffset + window.innerHeight")
-            total_height = self.driver.execute_script("return document.body.scrollHeight")
-            scrolls += 1
-            
-        self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(pause)
-        
-    def _convert_time(self, date_str: str) -> datetime:
+        Args:
+            text (str): Date string (e.g., "Сегодня в 14:35", "5 февраля в 13:00").
+
+        Returns:
+            datetime: Corresponding datetime object.
+        """
         now = datetime.now()
-        date_str = date_str.lower().strip()
+        text = text.lower()
 
         try:
-            if "сегодня" in date_str:
-                time_part = re.search(r'(\d{1,2}:\d{2})', date_str).group(1)
-                hour, minute = map(int, time_part.split(":"))
-                return datetime(now.year, now.month, now.day, hour, minute)
+            if "сегодня" in text:
+                h, m = map(int, re.search(r"(\d{1,2}:\d{2})", text).group(1).split(":"))
+                return datetime(now.year, now.month, now.day, h, m)
 
-            elif "вчера" in date_str:
-                time_part = re.search(r'(\d{1,2}:\d{2})', date_str).group(1)
-                hour, minute = map(int, time_part.split(":"))
-                yesterday = now - timedelta(days=1)
-                return datetime(yesterday.year, yesterday.month, yesterday.day, hour, minute)
+            if "вчера" in text:
+                h, m = map(int, re.search(r"(\d{1,2}:\d{2})", text).group(1).split(":"))
+                d = now - timedelta(days=1)
+                return datetime(d.year, d.month, d.day, h, m)
 
-            else:
-                m = re.search(r'(\d{1,2}) (\w+) в (\d{1,2}:\d{2})', date_str)
-                if not m:
-                    raise ValueError(f"Невозможно распознать дату: {date_str}")
-                day, month_str, time_part = m.groups()
-                day = int(day)
-                month = self.MONTHS.get(month_str)
-                if not month:
-                    raise ValueError(f"Неверный месяц: {month_str}")
-                hour, minute = map(int, time_part.split(":"))
-                year = now.year if (month < now.month or (month == now.month and day <= now.day)) else now.year - 1
-                return datetime(year, month, day, hour, minute)
-        except Exception as e:
-            print(f"Ошибка при конвертации даты '{date_str}': {e}")
+            d, m_txt, t = re.search(r"(\d{1,2}) (\w+) в (\d{1,2}:\d{2})", text).groups()
+            m = self.MONTHS[m_txt]
+            h, mi = map(int, t.split(":"))
+            y = now.year if m <= now.month else now.year - 1
+
+            return datetime(y, m, int(d), h, mi)
+
+        except Exception:
             return now
-    
-    def _scrap_cloth(self, link: str) -> tuple:
-        for attempt in range(5):
+
+    # ------------------
+
+    def _item_exists(self, avito_id: str) -> bool:
+        """
+        Checks if an item already exists in the database.
+
+        Args:
+            avito_id (str): Unique Avito item ID.
+
+        Returns:
+            bool: True if item exists, False otherwise.
+        """
+        self.cur.execute("SELECT 1 FROM items WHERE avito_id = ?", (avito_id,))
+        return self.cur.fetchone() is not None
+
+    # ------------------
+
+    def _scrap_item(self, link: str):
+        """
+        Scrapes a single item page for its details: time, price, ID, and image.
+
+        Args:
+            link (str): URL of the item page.
+
+        Returns:
+            tuple: (time_str, price, avito_id, img_url) or (None, None, None, None) if failed.
+        """
+        for _ in range(4):
             try:
                 self.driver.get(link)
-
-                wait = WebDriverWait(self.driver, 4)
+                wait = WebDriverWait(self.driver, 5)
 
                 price = wait.until(
-                    lambda d: d.find_element(By.CSS_SELECTOR, '[itemprop="price"]').get_attribute("content")
-                )
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[itemprop="price"]')
+                ).get_attribute("content")
 
                 time_str = wait.until(
-                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-date"]').text
-                )
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-date"]')
+                ).text
 
-                cloth_id = wait.until(
-                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-id"]').text
-                )
+                avito_id = wait.until(
+                    lambda d: d.find_element(By.CSS_SELECTOR, '[data-marker="item-view/item-id"]')
+                ).text
 
-                return time_str, price, cloth_id
+                try:
+                    img = self.driver.find_element(
+                        By.CLASS_NAME, 'desktop-1ky5g7j'
+                    ).get_attribute("src")
+                except Exception:
+                    img = None
+
+                return time_str, int(price), avito_id, img
 
             except (TimeoutException, StaleElementReferenceException):
-                print(f"Повтор ({attempt + 1}) — страница нестабильна")
-                time.sleep(1.5)
+                time.sleep(1)
 
+        return None, None, None, None
 
-    def _scrap_links(self, id: int):
-        items = self.driver.find_elements(
-            By.CSS_SELECTOR,
-            '[data-marker="item"]:not(.items-itemsCarouselWidget-qzTW2 [data-marker="item"])'
-        )
-        
-        links = [item.find_element(By.CSS_SELECTOR, '[data-marker="item-photo-sliderLink"]').get_attribute("href") 
-                for item in items]
+    # ------------------
 
-        links_per_cource = self.links.get(id, [])
-        add_flag = bool(links_per_cource)
-        res_links = []
-
-        for link in links:
-            time_str, price, cloth_id = self._scrap_cloth(link)
-            time_dt = self._convert_time(time_str)
-            
-            if datetime.now() - time_dt > timedelta(days=7):
-                break
-
-            if not add_flag:
-                links_per_cource.append({"link": link, "id": cloth_id, "time": time_dt, "price": price})
-            else:
-                if time_dt > links_per_cource[0]["time"] and cloth_id not in [i["id"] for i in links_per_cource]:
-                    res_links.append({"link": link, "id": cloth_id, "time": time_dt, "price": price})
-                else:
-                    break
-
-        if not add_flag:
-            res_links = links_per_cource
-        elif add_flag:
-            links_per_cource = res_links + links_per_cource
-
-        self.links[id] = links_per_cource
-
-        for res_link in res_links:
-            print(res_link)
-        print(len(res_links))
-        print(f"\n{'-' * 10}\n")
-
-    
     def scrap(self):
-        start = time.perf_counter()
-        for index_cloth, item in self.res.items():
-            self.driver.get(item["path"])
-            while self._check_for_captcha(wait=1):
-                print("Капча на главной странице, ждём...")
-                self.driver.get(item["path"])
-            self._scroll_to_bottom()
-            self._scrap_links(index_cloth)
+        """
+        Main scraping function that iterates over all subscriptions,
+        collects item links excluding carousel links, and inserts new items into the database.
+        """
+        self.cur.execute("SELECT * FROM subscriptions")
+        subs = self.cur.fetchall()
 
-        end = time.perf_counter()
-        print(end - start)
-    
+        for sub in subs:
+            print("🔍", sub["query"])
+
+            self.driver.get(sub["url"])
+            time.sleep(2)
+
+            # Only select links NOT inside the itemsCarousel
+            elements = self.driver.find_elements(
+                By.CSS_SELECTOR,
+                '[data-marker="item-photo-sliderLink"]:not([data-marker="itemsCarousel"] [data-marker="item-photo-sliderLink"])'
+            )
+
+            links = []
+
+            for el in elements:
+                try:
+                    href = el.get_attribute("href")
+                    if href:
+                        links.append(href)
+                except StaleElementReferenceException:
+                    continue
+
+            for link in links:
+                time_str, price, avito_id, img = self._scrap_item(link)
+
+                if not avito_id:
+                    continue
+
+                if self._item_exists(avito_id):
+                    break  # ❗ preserve old logic
+
+                created_at = self._convert_time(time_str)
+
+                self.cur.execute(
+                    """
+                    INSERT INTO items (
+                        avito_id,
+                        url,
+                        price,
+                        created_at,
+                        query_name,
+                        image_url
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (avito_id, link, price, created_at, sub["query"], img)
+                )
+
+                self.conn.commit()
+                print("🆕 NEW:", link)
+
+    # ------------------
+
     def close(self):
+        """
+        Closes the WebDriver and the database connection safely.
+        """
         try:
             self.driver.quit()
         except Exception:
             pass
-    
-    
 
-if __name__ == "__main__":
-    seller = Seller()
-    try:
-        seller.scrap()
-    finally:
-        seller.close()
-
-#обращаюсь в бд к последней шмотке и запоминаю ее дату
-#позже и больше чем неделя дальше не смотрю
-#как только все шмотки просмотрел обновляю бд
+        self.conn.close()

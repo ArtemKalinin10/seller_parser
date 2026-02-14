@@ -1,0 +1,22 @@
+[project]
+name = "resell-project"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "ArtemKalinin10",email = "artemkalininloveanime@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+    "datetime (>=6.0,<7.0)",
+    "selenium (>=4.40.0,<5.0.0)",
+    "undetected-chromedriver (>=3.5.5,<4.0.0)",
+    "asyncio (>=4.0.0,<5.0.0)",
+    "aiogram (>=3.25.0,<4.0.0)",
+    "dotenv (>=0.9.9,<0.10.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
